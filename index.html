@@ -6,7 +6,7 @@ button{width:100%;padding:16px;margin:8px 0;border:0;border-radius:10px;backgrou
 button.s{background:#555} #st{color:#555;margin-top:10px}
 @media(prefers-color-scheme:dark){body{background:#111;color:#eee}}
 </style>
-<h2>Phone Bridge v11</h2>
+<h2>Phone Bridge v12</h2>
 <p>افتح الرابط ده من اللوحة اللي على اللاب، وبعدين اضغط الزر.</p>
 <video id="pv" autoplay muted playsinline style="width:100%;border-radius:10px;background:#000;display:none"></video>
 <button id="go">ابدأ الاتصال</button>
@@ -20,7 +20,7 @@ const host = location.hash.slice(1), $ = i => document.getElementById(i), say = 
 let pc, ws, hb, vs, ms, face = 'user', why = '';
 const preview = s => { const v = $('pv'); v.srcObject = new MediaStream(s.getVideoTracks()); v.style.display = 'block'; v.style.transform = face === 'user' ? 'scaleX(-1)' : 'none'; };
 const cam = () => navigator.mediaDevices.getUserMedia({
-  video: { facingMode: face, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+  video: { facingMode: face, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
   audio: { echoCancellation: true, noiseSuppression: true } });
 const post = (k, data) => fetch('https://ntfy.sh/' + host, { method: 'POST', body: JSON.stringify({ from: 'phone', k, data }) });
 const toB64 = b => { let r = ''; b.forEach(x => r += String.fromCharCode(x)); return btoa(r); };
@@ -50,8 +50,8 @@ async function answer(offer) {
   if (vsnd) {
     const p = vsnd.getParameters();
     if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-    p.encodings[0].maxBitrate = 4000000;
-    p.degradationPreference = 'maintain-resolution';
+    p.encodings[0].maxBitrate = 2500000;
+    p.degradationPreference = 'balanced';
     await vsnd.setParameters(p).catch(e => log('params ' + e.message));
   }
   const st = vs.getSettings(); log('cam ' + st.width + 'x' + st.height + '@' + Math.round(st.frameRate || 0));
@@ -92,7 +92,7 @@ $('go').onclick = async () => {
 };
 $('fl').onclick = async () => {
   face = face === 'user' ? 'environment' : 'user';
-  const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: face, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } });
+  const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: face, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
   const sender = pc && pc.getSenders().find(x => x.track && x.track.kind === 'video');
   vs.stop(); vs = s.getVideoTracks()[0]; if (sender) sender.replaceTrack(vs);
   preview(s);
