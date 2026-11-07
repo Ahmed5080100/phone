@@ -2,58 +2,62 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Phone Bridge</title>
 <style>
 body{font:16px system-ui;margin:0;padding:20px;max-width:480px;margin-inline:auto;background:#fff;color:#111}
-textarea{width:100%;height:90px;box-sizing:border-box;font-size:12px;direction:ltr}
-button{width:100%;padding:14px;margin:8px 0;border:0;border-radius:10px;background:#1a5fd0;color:#fff;font-size:16px}
+button{width:100%;padding:16px;margin:8px 0;border:0;border-radius:10px;background:#1a5fd0;color:#fff;font-size:17px}
 button.s{background:#555} #st{color:#555;margin-top:10px}
-@media(prefers-color-scheme:dark){body{background:#111;color:#eee}textarea{background:#222;color:#eee}}
+@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}
 </style>
 <h2>Phone Bridge</h2>
-<p>الصق الكود اللي ظهر على اللاب:</p>
-<textarea id="o"></textarea>
-<button id="go">اتصل (هيطلب الكاميرا والمايك)</button>
-<p>كود الرد (انسخه والصقه في اللاب):</p>
-<textarea id="a" readonly></textarea>
-<button id="cp" class="s">نسخ كود الرد</button>
+<p>افتح الرابط ده من اللوحة اللي على اللاب، وبعدين اضغط الزر.</p>
+<button id="go">ابدأ الاتصال</button>
 <button id="fl" class="s">قلب الكاميرا</button>
 <audio id="au" autoplay playsinline></audio>
 <div id="st">جاهز</div>
 <script>
-let pc, face = 'user', vs;
-const $ = i => document.getElementById(i), say = t => $('st').textContent = t;
-async function cam() {
-  const s = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: face, width: 1280, height: 720 },
-    audio: { echoCancellation: true, noiseSuppression: true }
+const host = location.hash.slice(1), $ = i => document.getElementById(i), say = t => $('st').textContent = t;
+let pc, ws, hb, vs, ms, face = 'user';
+const cam = () => navigator.mediaDevices.getUserMedia({
+  video: { facingMode: face, width: 1280, height: 720 },
+  audio: { echoCancellation: true, noiseSuppression: true } });
+const send = m => ws.readyState === 1 && ws.send(JSON.stringify(m));
+async function answer(offer) {
+  if (pc) pc.close();
+  pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  await pc.setRemoteDescription(offer);
+  for (const t of pc.getTransceivers()) {
+    if (t.receiver.track.kind === 'video') { t.direction = 'sendonly'; await t.sender.replaceTrack(vs); }
+    else { t.direction = 'sendrecv'; await t.sender.replaceTrack(ms); }
+  }
+  pc.ontrack = e => { if (e.track.kind === 'audio') { $('au').srcObject = new MediaStream([e.track]); $('au').play(); } };
+  pc.onconnectionstatechange = () => say(pc.connectionState === 'connected' ? 'متصل ✔' : 'الحالة: ' + pc.connectionState);
+  await pc.setLocalDescription(await pc.createAnswer());
+  await new Promise(r => {
+    if (pc.iceGatheringState === 'complete') return r();
+    pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r();
+    setTimeout(r, 4000);
   });
-  return s;
+  send({ type: 'ANSWER', dst: host, payload: { k: 'answer', sdp: pc.localDescription.toJSON() } });
 }
 $('go').onclick = async () => {
+  if (!host) return say('الرابط ناقص. افتحه من اللوحة على اللاب.');
   try {
-    const offer = JSON.parse(atob($('o').value.trim()));
-    const s = await cam(); vs = s.getVideoTracks()[0];
-    pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-    await pc.setRemoteDescription(offer);
-    for (const t of pc.getTransceivers()) {
-      if (t.receiver.track.kind === 'video') { t.direction = 'sendonly'; await t.sender.replaceTrack(vs); }
-      else { t.direction = 'sendrecv'; await t.sender.replaceTrack(s.getAudioTracks()[0]); }
-    }
-    pc.ontrack = e => { if (e.track.kind === 'audio') { $('au').srcObject = new MediaStream([e.track]); $('au').play(); } };
-    pc.onconnectionstatechange = () => say('الحالة: ' + pc.connectionState);
-    await pc.setLocalDescription(await pc.createAnswer());
-    await new Promise(r => {
-      if (pc.iceGatheringState === 'complete') return r();
-      pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r();
-      setTimeout(r, 4000);
-    });
-    $('a').value = btoa(JSON.stringify(pc.localDescription.toJSON()));
-    say('انسخ كود الرد والصقه في اللاب ثم اضغط اتصل');
+    const s = await cam(); vs = s.getVideoTracks()[0]; ms = s.getAudioTracks()[0];
+    if (ws) ws.close(); clearInterval(hb);
+    ws = new WebSocket('wss://0.peerjs.com/peerjs?key=peerjs&id=ph' + Math.random().toString(36).slice(2, 12) + '&token=' + Math.random().toString(36).slice(2));
+    hb = setInterval(() => send({ type: 'HEARTBEAT' }), 20000);
+    ws.onclose = () => say('انقطع الاتصال بالسيرفر');
+    ws.onmessage = async e => {
+      const d = JSON.parse(e.data);
+      if (d.type === 'OPEN') { say('بيدوّر على اللاب...'); send({ type: 'OFFER', dst: host, payload: { k: 'hello' } }); }
+      else if (d.type === 'OFFER' && d.payload.k === 'offer') { say('بيتصل...'); answer(d.payload.sdp).catch(x => say('خطأ: ' + x.message)); }
+      else if (d.type === 'EXPIRE') say('اللاب مش متصل. اضغط ابدأ في اللوحة على اللاب الأول.');
+      else if (d.type === 'ERROR' || d.type === 'INVALID-KEY') say('خطأ في السيرفر: ' + d.type);
+    };
   } catch (e) { say('خطأ: ' + e.message); }
 };
-$('cp').onclick = () => navigator.clipboard.writeText($('a').value).then(() => say('اتنسخ'));
 $('fl').onclick = async () => {
   face = face === 'user' ? 'environment' : 'user';
   const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: face } });
-  const sender = pc.getSenders().find(x => x.track && x.track.kind === 'video');
-  vs.stop(); vs = s.getVideoTracks()[0]; sender.replaceTrack(vs);
+  const sender = pc && pc.getSenders().find(x => x.track && x.track.kind === 'video');
+  vs.stop(); vs = s.getVideoTracks()[0]; if (sender) sender.replaceTrack(vs);
 };
 </script></html>
