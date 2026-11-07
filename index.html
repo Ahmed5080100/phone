@@ -14,7 +14,7 @@ button.s{background:#555} #st{color:#555;margin-top:10px}
 <div id="st">جاهز</div>
 <script>
 const host = location.hash.slice(1), $ = i => document.getElementById(i), say = t => $('st').textContent = t;
-let pc, ws, hb, vs, ms, face = 'user';
+let pc, ws, hb, vs, ms, face = 'user', why = '';
 const cam = () => navigator.mediaDevices.getUserMedia({
   video: { facingMode: face, width: 1280, height: 720 },
   audio: { echoCancellation: true, noiseSuppression: true } });
@@ -44,9 +44,11 @@ $('go').onclick = async () => {
     if (ws) ws.close(); clearInterval(hb);
     ws = new WebSocket('wss://0.peerjs.com/peerjs?key=peerjs&id=ph' + Math.random().toString(36).slice(2, 12) + '&token=' + Math.random().toString(36).slice(2));
     hb = setInterval(() => send({ type: 'HEARTBEAT' }), 20000);
-    ws.onclose = () => say('انقطع الاتصال بالسيرفر');
+    ws.onerror = () => { why += ' [error]'; };
+    ws.onclose = e => say('انقطع الاتصال بالسيرفر. code=' + e.code + ' reason=' + (e.reason || '-') + why);
     ws.onmessage = async e => {
       const d = JSON.parse(e.data);
+      why += ' [' + d.type + (d.payload && d.payload.msg ? ':' + d.payload.msg : '') + ']';
       if (d.type === 'OPEN') { say('بيدوّر على اللاب...'); send({ type: 'OFFER', dst: host, payload: { k: 'hello' } }); }
       else if (d.type === 'OFFER' && d.payload.k === 'offer') { say('بيتصل...'); answer(d.payload.sdp).catch(x => say('خطأ: ' + x.message)); }
       else if (d.type === 'EXPIRE') say('اللاب مش متصل. اضغط ابدأ في اللوحة على اللاب الأول.');
