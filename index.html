@@ -20,7 +20,10 @@ let pc, ws, hb, vs, ms, face = 'user', why = '';
 const cam = () => navigator.mediaDevices.getUserMedia({
   video: { facingMode: face, width: 1280, height: 720 },
   audio: { echoCancellation: true, noiseSuppression: true } });
-const send = m => ws.readyState === 1 && ws.send(JSON.stringify(m));
+const post = (k, data) => fetch('https://ntfy.sh/' + host, { method: 'POST', body: JSON.stringify({ from: 'phone', k, data }) });
+const toB64 = b => { let r = ''; b.forEach(x => r += String.fromCharCode(x)); return btoa(r); };
+const pack = async o => toB64(new Uint8Array(await new Response(new Blob([JSON.stringify(o)]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()));
+const unpack = async t => JSON.parse(await new Response(new Blob([Uint8Array.from(atob(t), c => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text());
 async function answer(offer) {
   if (pc) pc.close();
   pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -37,27 +40,31 @@ async function answer(offer) {
     pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r();
     setTimeout(r, 4000);
   });
-  send({ type: 'ANSWER', dst: host, payload: { k: 'answer', sdp: pc.localDescription.toJSON() } });
+  await post('answer', await pack(pc.localDescription.toJSON()));
 }
 $('go').onclick = async () => {
   if (!host) return say('الرابط ناقص. افتحه من اللوحة على اللاب.');
   if ($('go').disabled) return; $('go').disabled = true;
   try {
     const s = await cam(); vs = s.getVideoTracks()[0]; ms = s.getAudioTracks()[0];
-    clearInterval(hb);
-    ws = new WebSocket('wss://0.peerjs.com/peerjs?key=peerjs&id=ph' + Math.random().toString(36).slice(2, 12) + '&token=' + Math.random().toString(36).slice(2));
-    hb = setInterval(() => send({ type: 'HEARTBEAT' }), 20000);
+    clearInterval(hb); let got = false;
+    ws = new WebSocket('wss://ntfy.sh/' + host + '/ws');
     ws.onopen = () => log('ws open');
-    ws.onerror = () => { why += ' [error]'; log('ws error'); };
-    ws.onclose = e => { $('go').disabled = false; say('انقطع الاتصال بالسيرفر. code=' + e.code + ' reason=' + (e.reason || '-') + why); };
+    ws.onerror = () => log('ws error');
+    ws.onclose = e => { clearInterval(hb); $('go').disabled = false; say('انقطع الاتصال بالسيرفر. code=' + e.code); };
     ws.onmessage = async e => {
       const d = JSON.parse(e.data);
-      log('msg ' + d.type + ' ' + JSON.stringify(d.payload || '').slice(0, 80));
-      why += ' [' + d.type + (d.payload && d.payload.msg ? ':' + d.payload.msg : '') + ']';
-      if (d.type === 'OPEN') { say('بيدوّر على اللاب...'); send({ type: 'OFFER', dst: host, payload: { k: 'hello' } }); }
-      else if (d.type === 'OFFER' && d.payload.k === 'offer') { say('بيتصل...'); answer(d.payload.sdp).catch(x => say('خطأ: ' + x.message)); }
-      else if (d.type === 'EXPIRE') say('اللاب مش متصل. اضغط ابدأ في اللوحة على اللاب الأول.');
-      else if (d.type === 'ERROR' || d.type === 'INVALID-KEY') say('خطأ في السيرفر: ' + d.type);
+      log('event ' + d.event);
+      if (d.event === 'open') {
+        say('بيدوّر على اللاب... (لازم تكون ضغطت ابدأ هناك)');
+        post('hello'); hb = setInterval(() => !got && post('hello'), 6000);
+      } else if (d.event === 'message') {
+        let x; try { x = JSON.parse(d.message); } catch { return; }
+        if (x.from === 'laptop' && x.k === 'offer' && !got) {
+          got = true; say('بيتصل...');
+          answer(await unpack(x.data)).catch(err => say('خطأ: ' + err.message));
+        }
+      }
     };
   } catch (e) { $('go').disabled = false; say('خطأ: ' + e.message); }
 };
