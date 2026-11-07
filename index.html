@@ -12,8 +12,10 @@ button.s{background:#555} #st{color:#555;margin-top:10px}
 <button id="fl" class="s">قلب الكاميرا</button>
 <audio id="au" autoplay playsinline></audio>
 <div id="st">جاهز</div>
+<pre id="lg" dir="ltr" style="font-size:12px;white-space:pre-wrap;color:#888"></pre>
 <script>
-const host = location.hash.slice(1), $ = i => document.getElementById(i), say = t => $('st').textContent = t;
+const host = location.hash.slice(1), $ = i => document.getElementById(i), say = t => { $('st').textContent = t; log(t); },
+  log = t => { $('lg').textContent += ((performance.now() / 1000).toFixed(1) + 's ' + t + '\n'); };
 let pc, ws, hb, vs, ms, face = 'user', why = '';
 const cam = () => navigator.mediaDevices.getUserMedia({
   video: { facingMode: face, width: 1280, height: 720 },
@@ -39,22 +41,25 @@ async function answer(offer) {
 }
 $('go').onclick = async () => {
   if (!host) return say('الرابط ناقص. افتحه من اللوحة على اللاب.');
+  if ($('go').disabled) return; $('go').disabled = true;
   try {
     const s = await cam(); vs = s.getVideoTracks()[0]; ms = s.getAudioTracks()[0];
-    if (ws) ws.close(); clearInterval(hb);
+    clearInterval(hb);
     ws = new WebSocket('wss://0.peerjs.com/peerjs?key=peerjs&id=ph' + Math.random().toString(36).slice(2, 12) + '&token=' + Math.random().toString(36).slice(2));
     hb = setInterval(() => send({ type: 'HEARTBEAT' }), 20000);
-    ws.onerror = () => { why += ' [error]'; };
-    ws.onclose = e => say('انقطع الاتصال بالسيرفر. code=' + e.code + ' reason=' + (e.reason || '-') + why);
+    ws.onopen = () => log('ws open');
+    ws.onerror = () => { why += ' [error]'; log('ws error'); };
+    ws.onclose = e => { $('go').disabled = false; say('انقطع الاتصال بالسيرفر. code=' + e.code + ' reason=' + (e.reason || '-') + why); };
     ws.onmessage = async e => {
       const d = JSON.parse(e.data);
+      log('msg ' + d.type + ' ' + JSON.stringify(d.payload || '').slice(0, 80));
       why += ' [' + d.type + (d.payload && d.payload.msg ? ':' + d.payload.msg : '') + ']';
       if (d.type === 'OPEN') { say('بيدوّر على اللاب...'); send({ type: 'OFFER', dst: host, payload: { k: 'hello' } }); }
       else if (d.type === 'OFFER' && d.payload.k === 'offer') { say('بيتصل...'); answer(d.payload.sdp).catch(x => say('خطأ: ' + x.message)); }
       else if (d.type === 'EXPIRE') say('اللاب مش متصل. اضغط ابدأ في اللوحة على اللاب الأول.');
       else if (d.type === 'ERROR' || d.type === 'INVALID-KEY') say('خطأ في السيرفر: ' + d.type);
     };
-  } catch (e) { say('خطأ: ' + e.message); }
+  } catch (e) { $('go').disabled = false; say('خطأ: ' + e.message); }
 };
 $('fl').onclick = async () => {
   face = face === 'user' ? 'environment' : 'user';
