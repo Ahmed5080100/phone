@@ -6,8 +6,9 @@ button{width:100%;padding:16px;margin:8px 0;border:0;border-radius:10px;backgrou
 button.s{background:#555} #st{color:#555;margin-top:10px}
 @media(prefers-color-scheme:dark){body{background:#111;color:#eee}}
 </style>
-<h2>Phone Bridge v9</h2>
+<h2>Phone Bridge v10</h2>
 <p>افتح الرابط ده من اللوحة اللي على اللاب، وبعدين اضغط الزر.</p>
+<video id="pv" autoplay muted playsinline style="width:100%;border-radius:10px;background:#000;display:none"></video>
 <button id="go">ابدأ الاتصال</button>
 <button id="fl" class="s">قلب الكاميرا</button>
 <audio id="au" autoplay playsinline></audio>
@@ -17,6 +18,7 @@ button.s{background:#555} #st{color:#555;margin-top:10px}
 const host = location.hash.slice(1), $ = i => document.getElementById(i), say = t => { $('st').textContent = t; log(t); },
   log = t => { $('lg').textContent += ((performance.now() / 1000).toFixed(1) + 's ' + t + '\n'); };
 let pc, ws, hb, vs, ms, face = 'user', why = '';
+const preview = s => { const v = $('pv'); v.srcObject = new MediaStream(s.getVideoTracks()); v.style.display = 'block'; v.style.transform = face === 'user' ? 'scaleX(-1)' : 'none'; };
 const cam = () => navigator.mediaDevices.getUserMedia({
   video: { facingMode: face, width: 1280, height: 720 },
   audio: { echoCancellation: true, noiseSuppression: true } });
@@ -57,6 +59,7 @@ $('go').onclick = async () => {
   if ($('go').disabled) return; $('go').disabled = true;
   try {
     const s = await cam(); vs = s.getVideoTracks()[0]; ms = s.getAudioTracks()[0];
+    preview(s);
     clearInterval(hb); let got = false;
     ws = new WebSocket('wss://ntfy.sh/' + host + '/ws');
     ws.onopen = () => log('ws open');
@@ -83,5 +86,6 @@ $('fl').onclick = async () => {
   const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: face } });
   const sender = pc && pc.getSenders().find(x => x.track && x.track.kind === 'video');
   vs.stop(); vs = s.getVideoTracks()[0]; if (sender) sender.replaceTrack(vs);
+  preview(s);
 };
 </script></html>
