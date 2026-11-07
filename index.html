@@ -6,8 +6,8 @@ button{width:100%;padding:16px;margin:8px 0;border:0;border-radius:10px;backgrou
 button.s{background:#555} #st{color:#555;margin-top:10px}
 @media(prefers-color-scheme:dark){body{background:#111;color:#eee}}
 </style>
-<h2>Phone Bridge v12</h2>
-<p>افتح الرابط ده من اللوحة اللي على اللاب، وبعدين اضغط الزر.</p>
+<h2>Phone Bridge v13</h2>
+<p>الاتصال بيبدأ لوحده. المس الشاشة مرة واحدة لتشغيل الصوت.</p>
 <video id="pv" autoplay muted playsinline style="width:100%;border-radius:10px;background:#000;display:none"></video>
 <button id="go">ابدأ الاتصال</button>
 <button id="fl" class="s">قلب الكاميرا</button>
@@ -63,17 +63,18 @@ async function answer(offer) {
   });
   await post('answer', await pack(pc.localDescription.toJSON()));
 }
-$('go').onclick = async () => {
+let stream;
+const start = async () => {
   if (!host) return say('الرابط ناقص. افتحه من اللوحة على اللاب.');
   if ($('go').disabled) return; $('go').disabled = true;
   try {
-    const s = await cam(); vs = s.getVideoTracks()[0]; ms = s.getAudioTracks()[0];
+    const s = stream || (stream = await cam()); vs = s.getVideoTracks()[0]; ms = s.getAudioTracks()[0];
     preview(s);
     clearInterval(hb); let got = false;
     ws = new WebSocket('wss://ntfy.sh/' + host + '/ws');
     ws.onopen = () => log('ws open');
     ws.onerror = () => log('ws error');
-    ws.onclose = e => { clearInterval(hb); $('go').disabled = false; say('انقطع الاتصال بالسيرفر. code=' + e.code); };
+    ws.onclose = e => { clearInterval(hb); $('go').disabled = false; say('انقطع الاتصال بالسيرفر. code=' + e.code); if (!pc || pc.connectionState !== 'connected') setTimeout(start, 3000); };
     ws.onmessage = async e => {
       const d = JSON.parse(e.data);
       log('event ' + d.event);
@@ -90,6 +91,8 @@ $('go').onclick = async () => {
     };
   } catch (e) { $('go').disabled = false; say('خطأ: ' + e.message); }
 };
+$('go').onclick = start;
+if (host) start();
 $('fl').onclick = async () => {
   face = face === 'user' ? 'environment' : 'user';
   const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: face, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
