@@ -6,7 +6,7 @@ button{width:100%;padding:16px;margin:8px 0;border:0;border-radius:10px;backgrou
 button.s{background:#555} #st{color:#555;margin-top:10px}
 @media(prefers-color-scheme:dark){body{background:#111;color:#eee}}
 </style>
-<h2>Phone Bridge</h2>
+<h2>Phone Bridge v9</h2>
 <p>افتح الرابط ده من اللوحة اللي على اللاب، وبعدين اضغط الزر.</p>
 <button id="go">ابدأ الاتصال</button>
 <button id="fl" class="s">قلب الكاميرا</button>
@@ -24,17 +24,27 @@ const post = (k, data) => fetch('https://ntfy.sh/' + host, { method: 'POST', bod
 const toB64 = b => { let r = ''; b.forEach(x => r += String.fromCharCode(x)); return btoa(r); };
 const pack = async o => toB64(new Uint8Array(await new Response(new Blob([JSON.stringify(o)]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()));
 const unpack = async t => JSON.parse(await new Response(new Blob([Uint8Array.from(atob(t), c => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text());
+const attach = t => { log('attach ' + t.kind + ' muted=' + t.muted + ' state=' + t.readyState); if (t.kind !== 'audio') return; $('au').srcObject = new MediaStream([t]); meter(t); $('au').play().then(() => log('audio playing')).catch(() => log('اضغط في أي مكان في الصفحة لتشغيل الصوت')); };
+let metered = false;
+function meter(t) {
+  if (metered) return; metered = true;
+  const c = new AudioContext(), a = c.createAnalyser(), b = new Uint8Array(a.fftSize);
+  c.resume(); c.createMediaStreamSource($('au').srcObject).connect(a);
+  setInterval(() => { a.getByteTimeDomainData(b); log('مستوى الصوت الوارد: ' + Math.max(...b.map(v => Math.abs(v - 128))) + ' ' + t.readyState + ' muted=' + t.muted); }, 3000);
+}
+addEventListener('click', () => { if ($('au').srcObject) $('au').play().catch(() => {}); });
 async function answer(offer) {
   if (pc) pc.close();
   pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  pc.ontrack = e => attach(e.track);
   await pc.setRemoteDescription(offer);
   for (const t of pc.getTransceivers()) {
     if (t.receiver.track.kind === 'video') { t.direction = 'sendonly'; await t.sender.replaceTrack(vs); }
-    else { t.direction = 'sendrecv'; await t.sender.replaceTrack(ms); }
+    else { t.direction = 'sendrecv'; await t.sender.replaceTrack(ms); attach(t.receiver.track); }
   }
-  pc.ontrack = e => { if (e.track.kind === 'audio') { $('au').srcObject = new MediaStream([e.track]); $('au').play(); } };
   pc.onconnectionstatechange = () => say(pc.connectionState === 'connected' ? 'متصل ✔' : 'الحالة: ' + pc.connectionState);
   await pc.setLocalDescription(await pc.createAnswer());
+  log('dirs ' + pc.getTransceivers().map(x => x.kind + ':' + x.direction).join(' '));
   await new Promise(r => {
     if (pc.iceGatheringState === 'complete') return r();
     pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r();
