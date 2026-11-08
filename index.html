@@ -6,7 +6,7 @@ button{width:100%;padding:16px;margin:8px 0;border:0;border-radius:10px;backgrou
 button.s{background:#555} #st{color:#555;margin-top:10px}
 @media(prefers-color-scheme:dark){body{background:#111;color:#eee}}
 </style>
-<h2>Phone Bridge v13</h2>
+<h2>Phone Bridge v15</h2>
 <p>الاتصال بيبدأ لوحده. المس الشاشة مرة واحدة لتشغيل الصوت.</p>
 <video id="pv" autoplay muted playsinline style="width:100%;border-radius:10px;background:#000;display:none"></video>
 <button id="go">ابدأ الاتصال</button>
@@ -35,9 +35,10 @@ function meter(t) {
   setInterval(() => { a.getByteTimeDomainData(b); log('مستوى الصوت الوارد: ' + Math.max(...b.map(v => Math.abs(v - 128))) + ' ' + t.readyState + ' muted=' + t.muted); }, 3000);
 }
 addEventListener('click', () => { if ($('au').srcObject) $('au').play().catch(() => {}); });
-async function answer(offer) {
+async function answer(x) {
+  const offer = x.sdp || x;
   if (pc) pc.close();
-  pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  pc = new RTCPeerConnection({ iceServers: x.ice || [{ urls: 'stun:stun.l.google.com:19302' }] });
   pc.ontrack = e => attach(e.track);
   await pc.setRemoteDescription(offer);
   for (const t of pc.getTransceivers()) {
